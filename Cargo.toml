@@ -13,3 +13,4 @@ unused = "allow"  # For exploratory dev
 raptorq = "1.8.0"
 raptor-code = "1.0.6"
 dotenv = "0.15.0"
+uuid = "1.6.1"
