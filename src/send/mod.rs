@@ -67,8 +67,9 @@ fn send_file_with_raptor(
 
         for segment_id in 0..total_num_of_symbols {
             // println!("\t->> Segmnet id: {}", segment_id);
+            // -- Obtain encoding_symbols
             let encoding_symbol = encoder.fountain(segment_id as u32);
-
+            // -- Create Preamble with info
             let preamble = Preamble {
                 filename: filename.clone(),
                 filesize: filesize as u64,
@@ -78,6 +79,7 @@ fn send_file_with_raptor(
                 number_of_segments_expected: total_num_of_symbols as u64,
             };
             // println!("->> Preamble: {:#?}", preamble);
+            // -- Create Packet with 170 Padding bytes
             let packet = Packet {
                 pre_padding: 170,
                 preamble,
@@ -86,10 +88,11 @@ fn send_file_with_raptor(
                 post_padding: 170,
             };
             // println!("->> Packet: {:?}", packet);
+            // -- Serialise Struct to send in bytes
             let packet_bytes = bincode::serialize(&packet)?;
+            // -- Send Packet
             udp_service.send(&packet_bytes).expect("Send packet error");
         }
-        break;
     }
 
     Ok(())
