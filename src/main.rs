@@ -32,7 +32,7 @@ fn main() -> Result<()> {
         }
         // -- Recv operation mode
         "recv" => {
-            let port = "8000";
+            let port = "8001";
             let udp_service = udp::init_udp_service(&LOCAL_ADDRESS, port)?;
             recv::main(&udp_service)?;
         }
