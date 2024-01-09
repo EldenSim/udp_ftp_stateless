@@ -1,12 +1,14 @@
 // region:    --- modules
 
 use std::env;
+use std::net::UdpSocket;
 
 use dotenv::dotenv;
 use udp_ftp_stateless::Result;
 
 mod recv;
 mod send;
+mod udp;
 
 // endregion: --- modules
 
@@ -19,11 +21,20 @@ fn main() -> Result<()> {
     match FTP_MODE.to_lowercase().as_str() {
         // -- Send operation mode
         "send" => {
-            send::main()?;
+            let FOREIGN_ADDRESS =
+                env::var("FOREIGN_ADDRESS").expect("FOREIGN_ADDRESS env var not set");
+            let port = "8000";
+            let udp_service = udp::init_udp_service(&LOCAL_ADDRESS, port)?;
+            let foreign_port = "8001";
+            udp::connect_to_foreign_addr(&udp_service, &FOREIGN_ADDRESS, foreign_port)?;
+
+            send::main(&udp_service)?;
         }
         // -- Recv operation mode
         "recv" => {
-            recv::main()?;
+            let port = "8000";
+            let udp_service = udp::init_udp_service(&LOCAL_ADDRESS, port)?;
+            recv::main(&udp_service)?;
         }
         _ => {
             return Err("Invalid FTP_MODE variable, FTP_MODE only operable in RECV or SEND".into());
