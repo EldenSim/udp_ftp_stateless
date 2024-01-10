@@ -106,11 +106,9 @@ fn calculate_chunksize_and_data_size(max_source_symbol_size: usize) -> Result<us
         .expect("MTU env var not set")
         .parse::<usize>()?;
 
-    // -- Max data size is calculate by deducting preamble (64 bytes), IP/ UDP Headers (28 bytes) and buffer (10 bytes).
-    let max_data_size = mtu_limit - 64 - 28 - 10;
-    let MAX_CHUNKSIZE = env::var("MAX_CHUNKSIZE")
-        .expect("MAX_CHUNKSIZE env var not set")
-        .parse::<usize>()?;
+    // -- Max data size is calculate by deducting preamble (72 bytes), IP/ UDP Headers (28 bytes) and buffer (10 bytes).
+    let max_data_size = mtu_limit - 72 - 28 - 10;
+    const MAX_CHUNKSIZE: usize = 500_000;
     let chunksize = if (mtu_limit * max_source_symbol_size) > MAX_CHUNKSIZE {
         MAX_CHUNKSIZE
     } else {
