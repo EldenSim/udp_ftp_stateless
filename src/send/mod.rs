@@ -57,14 +57,15 @@ fn send_file_with_raptor(
 
     let chunks: Vec<_> = file.chunks(chunksize).collect();
     let total_number_of_chunks = chunks.len();
+    println!("->> Number of chunks: {}", total_number_of_chunks);
     for (chunk_id, chunk) in chunks.iter().enumerate() {
         // println!("->> Chunk id: {}", chunk_id);
-
+        let chunksize = chunk.len();
         let mut encoder =
             raptor_code::SourceBlockEncoder::new(chunk, encoder_config.max_source_symbol_size);
         let total_num_of_symbols =
             encoder.nb_source_symbols() as usize + encoder_config.number_of_repair_symbols;
-
+        println!("->> Number of segment: {}", total_num_of_symbols);
         for segment_id in 0..total_num_of_symbols {
             // println!("\t->> Segmnet id: {}", segment_id);
             // -- Obtain encoding_symbols
@@ -74,6 +75,7 @@ fn send_file_with_raptor(
                 filename: filename.clone(),
                 filesize: filesize as u64,
                 chunk_id: chunk_id as u64,
+                chunksize: chunksize as u64,
                 number_of_chunks_expected: total_number_of_chunks as u64,
                 segment_id: segment_id as u64,
                 number_of_segments_expected: total_num_of_symbols as u64,

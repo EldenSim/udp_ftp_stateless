@@ -11,13 +11,13 @@ use uuid::Uuid;
 
 /*
 Packet structure:
-    Preamble (Limit to 64 bytes):
-        - 0xAA | filename | filesize | chunk_id | number_of_chunks_expected | segment_id | number of segments_expected |
-    Data (Limit to MTU - IP/UDP header (28 bytes) - Preamble) -- target (9000 - 30 - 64 = 8506 ~ 8500):
+    Preamble (Limit to 72 bytes):
+        - 0xAA | filename | filesize | chunk_id | chunksize | number_of_chunks_expected | segment_id | number of segments_expected |
+    Data (Limit to MTU - IP/UDP header (28 bytes) - Preamble) -- target (9000 - 30 - 72 = 8898 ~ 8500):
         - 0xAA | data | 0xAA
 */
 
-// -- Template for preamble info (64 bytes)
+// -- Template for preamble info (72 bytes)
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Preamble {
     // -- Max filename size limit to 16 bytes for now
@@ -27,6 +27,8 @@ pub struct Preamble {
     pub filesize: u64,
     // -- 8 bytes
     pub chunk_id: u64,
+    // -- 8 bytes
+    pub chunksize: u64,
     // -- 8 bytes
     pub number_of_chunks_expected: u64,
     // -- 8 bytes
