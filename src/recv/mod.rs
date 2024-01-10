@@ -36,7 +36,8 @@ pub fn main(udp_service: &UdpSocket) -> Result<()> {
     // let mut file_chunk_segment_counter: Box<HashMap<String, Vec<Vec<String>>>> =
     //     Box::new(HashMap::new());
     // let mut segment_hashmap: Box<HashMap<String, Vec<u8>>> = Box::new(HashMap::new());
-    let mut file_chunk_segment_counter: HashMap<String, Vec<Vec<String>>> = HashMap::new();
+    let mut file_chunk_segment_counter: Arc<Mutex<HashMap<String, Vec<u64>>>> =
+        Arc::new(Mutex::new(HashMap::new()));
     let mut segment_hashmap: Arc<Mutex<Box<HashMap<String, Vec<u8>>>>> =
         Arc::new(Mutex::new(Box::new(HashMap::new())));
     let mut temp_storage = Box::new(Vec::new());
@@ -50,8 +51,9 @@ pub fn main(udp_service: &UdpSocket) -> Result<()> {
             Err(e) => return Err(e.into()),
         }
         // -- Parse packet and name them
+        let move_temp_f_c_s_counter = Arc::clone(&file_chunk_segment_counter);
         let move_temp_storage: Vec<_> = temp_storage.drain(..temp_storage.len()).collect();
-        let move_segment_template = Arc::clone(&segment_hashmap);
+        let move_temp_segment_template = Arc::clone(&segment_hashmap);
         task::spawn(async move {
             for packet in move_temp_storage.iter() {
                 let packet: Packet =
@@ -59,24 +61,53 @@ pub fn main(udp_service: &UdpSocket) -> Result<()> {
                 let preamble = packet.preamble;
                 let filename = preamble.filename;
                 let chunk_id = preamble.chunk_id;
+                let number_of_chunks_expected = preamble.number_of_chunks_expected;
                 let segment_id = preamble.segment_id;
+                let number_of_segments_expected = preamble.number_of_segments_expected;
                 let file_chunk_segment_name =
                     format!("{}_c_{}_s_{}", &filename, chunk_id, segment_id);
-                // segment_hashmap.insert(file_chunk_segment_name, packet.data);
-                move_segment_template
+                // let file_chunk_name = format!("{}_c_{}", &filename, chunk_id);
+                // -- Insert segment data into segment hashmap
+                move_temp_segment_template
                     .lock()
                     .await
-                    .insert(file_chunk_segment_name, packet.data);
+                    .insert(file_chunk_segment_name.clone(), packet.data);
+                // -- Check if counter has filename then initialise vec of num chunks and num segment received
+                if !move_temp_f_c_s_counter.lock().await.contains_key(&filename) {
+                    move_temp_f_c_s_counter.lock().await.insert(
+                        filename.clone(),
+                        vec![0; number_of_chunks_expected as usize],
+                    );
+                }
+                // -- Obtain number of segment received
+                let number_of_segments_received =
+                    move_temp_f_c_s_counter.lock().await.get(&filename).unwrap()[chunk_id as usize];
+                // --  If num of segments recevied less then expected update counter else ignore
+                if number_of_segments_received < number_of_segments_expected {
+                    move_temp_f_c_s_counter
+                        .lock()
+                        .await
+                        .get_mut(&filename)
+                        .unwrap()[chunk_id as usize] += 1
+                }
+                // println!("->> chunk id: {}", chunk_id);
             }
             // println!(
             //     "->> segment hashmap: {:?}",
-            //     move_segment_template.lock().await.len()
+            //     move_temp_segment_template.lock().await.len()
             // );
             // println!(
             //     "->> Mem segment hashmap {}",
-            //     size_of_val(&**move_segment_template.lock().await)
+            //     size_of_val(&**move_temp_segment_template.lock().await)
             // );
+            println!(
+                "->> counter Hashmap: {:?}",
+                move_temp_f_c_s_counter.lock().await
+            );
         });
+
+        // -- Decode the received segments if possible
+        task::spawn(async move {});
     }
 
     Ok(())
