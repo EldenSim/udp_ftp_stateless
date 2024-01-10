@@ -61,6 +61,7 @@ pub fn main(udp_service: &UdpSocket) -> Result<()> {
                 let preamble = packet.preamble;
                 let filename = preamble.filename;
                 let chunk_id = preamble.chunk_id;
+                let chunksize = preamble.chunksize;
                 let number_of_chunks_expected = preamble.number_of_chunks_expected;
                 let segment_id = preamble.segment_id;
                 let number_of_segments_expected = preamble.number_of_segments_expected;
@@ -82,6 +83,9 @@ pub fn main(udp_service: &UdpSocket) -> Result<()> {
                 // -- Obtain number of segment received
                 let number_of_segments_received =
                     move_temp_f_c_s_counter.lock().await.get(&filename).unwrap()[chunk_id as usize];
+                if number_of_segments_received == 121 {
+                    break;
+                }
                 // --  If num of segments recevied less then expected update counter else ignore
                 if number_of_segments_received < number_of_segments_expected {
                     move_temp_f_c_s_counter
@@ -90,6 +94,35 @@ pub fn main(udp_service: &UdpSocket) -> Result<()> {
                         .get_mut(&filename)
                         .unwrap()[chunk_id as usize] += 1
                 }
+
+                if number_of_segments_received
+                    > (number_of_segments_expected - NUMBER_OF_REPAIR_SYMBOLS as u64)
+                {
+                    println!("->> Enough segment to decode");
+                    let (mut segments_name_to_decode, mut segments_to_decode) =
+                        (Vec::new(), Vec::new());
+                    for i in 0..number_of_segments_received {
+                        let segment_name = format!("{}_c_{}_s_{}", &filename, chunk_id, i);
+                        let segment_hashmap = move_temp_segment_template.lock().await;
+                        let segment_details = segment_hashmap.get_key_value(&segment_name).unwrap();
+                        segments_name_to_decode.push(segment_details.0.to_string());
+                        segments_to_decode.push(segment_details.1.to_owned())
+                    }
+                    println!("->> segments length: {}", segments_to_decode.len());
+                    // println!("->> segments name: {:?}", segments_name_to_decode);
+                    task::spawn(async move {
+                        decode_segments(
+                            segments_to_decode.to_owned(),
+                            segments_name_to_decode,
+                            MAX_SOURCE_SYMBOL_SIZE,
+                            chunksize as usize,
+                            filename,
+                            chunk_id as usize,
+                        )
+                        .await
+                    });
+                }
+
                 // println!("->> chunk id: {}", chunk_id);
             }
             // println!(
@@ -100,14 +133,16 @@ pub fn main(udp_service: &UdpSocket) -> Result<()> {
             //     "->> Mem segment hashmap {}",
             //     size_of_val(&**move_temp_segment_template.lock().await)
             // );
-            println!(
-                "->> counter Hashmap: {:?}",
-                move_temp_f_c_s_counter.lock().await
-            );
+            // println!(
+            //     "->> counter Hashmap: {:?}",
+            //     move_temp_f_c_s_counter.lock().await
+            // );
         });
 
         // -- Decode the received segments if possible
-        task::spawn(async move {});
+        // task::spawn(async move {
+
+        // });
     }
 
     Ok(())
@@ -122,19 +157,20 @@ async fn decode_segments(
     chunk_id: usize,
 ) {
     let mut decoder = raptor_code::SourceBlockDecoder::new(max_source_symbol_size);
-    for (i, segment) in segments_to_decode.iter().enumerate() {
+    let mut i = 0;
+    while !decoder.fully_specified() {
         let esi = segments_name_to_decode[i].split("_").collect::<Vec<_>>()[4]
             .parse::<u32>()
             .unwrap();
-        decoder.push_encoding_symbol(&segment, esi);
-        if decoder.fully_specified() {
-            break;
-        }
+        decoder.push_encoding_symbol(&segments_to_decode[i], esi);
+        i += 1
     }
+
     let reconstructed_chunk = decoder
         .decode(chunksize)
         .ok_or("Unable to decode message")
         .unwrap();
+    println!("->> Decoded DONE");
     let chunk_file_path = format!("./temp/{}_{}.txt", filename, chunk_id);
     fs::write(chunk_file_path, reconstructed_chunk)
         .await
