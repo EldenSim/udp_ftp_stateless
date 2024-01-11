@@ -12,7 +12,8 @@ mod udp;
 
 // endregion: --- modules
 
-fn main() -> Result<()> {
+#[async_std::main]
+async fn main() -> Result<()> {
     // -- Loading dev env variables
     dotenv().ok();
     let FTP_MODE = env::var("FTP_MODE").expect("FTP_MODE env var not set");
@@ -34,7 +35,7 @@ fn main() -> Result<()> {
         "recv" => {
             let port = "8001";
             let udp_service = udp::init_udp_service(&LOCAL_ADDRESS, port)?;
-            recv::main(&udp_service)?;
+            recv::main(&udp_service).await?;
         }
         _ => {
             return Err("Invalid FTP_MODE variable, FTP_MODE only operable in RECV or SEND".into());

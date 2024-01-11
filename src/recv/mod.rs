@@ -5,6 +5,8 @@ use std::env;
 use std::mem::size_of_val;
 use std::net::UdpSocket;
 
+use async_std::fs::OpenOptions;
+use async_std::io::WriteExt;
 use udp_ftp_stateless::Result;
 use udp_ftp_stateless::{Packet, Preamble};
 
@@ -13,8 +15,15 @@ use async_std::{fs, task};
 
 // endregion: --- Modules
 
-pub fn main(udp_service: &UdpSocket) -> Result<()> {
-    // -- Hashmap to keep track of number of chunks received and number of segment received for each chunk
+pub async fn main(udp_service: &UdpSocket) -> Result<()> {
+    // -- Obtain necessary env var
+    /*
+        Sender and Receiver should have the same env var for the following:
+            - NUMBER_OF_REPAIR_SYMBOLS: Used for determining when to start decoding (number of expected segment - NUMBER_OF_REPAIR_SYMBOLS)
+            - MAX_SOURCE_SYMBOL_SIZE: Used for initialising raptor decoder
+            - MTU: Used for initialising initial recv buffer size
+            - MAX_CHUNKSIZE: Used for limiting the max chunksize to be received from sender
+    */
     let NUMBER_OF_REPAIR_SYMBOLS = env::var("NUMBER_OF_REPAIR_SYMBOLS")
         .expect("NUMBER_OF_REPAIR_SYMBOLS env var not set")
         .parse::<usize>()?;
@@ -33,28 +42,48 @@ pub fn main(udp_service: &UdpSocket) -> Result<()> {
         MTU * MAX_SOURCE_SYMBOL_SIZE
     };
 
+    // -- Setting up objects that need to be refereced and updated from spawned task
+    /*
+        - file_chunk_segment_counter: Used for keeping track of number of segments received from each chunk
+        - segment_hashmap: Used for storing each segment's data
+        - temp_storage: Used for storing received packets, will be empty and moved to move_temp_storage used for spawned task
+        - decoding_status_hashmap: Used for determining if a decoding of the chunk segments is in progress,
+                                to avoid multiple instances of segments being decoded
+    */
     let mut file_chunk_segment_counter: Arc<Mutex<HashMap<String, Vec<u64>>>> =
         Arc::new(Mutex::new(HashMap::new()));
     let mut segment_hashmap: Arc<Mutex<Box<HashMap<String, Vec<u8>>>>> =
         Arc::new(Mutex::new(Box::new(HashMap::new())));
     let mut temp_storage = Box::new(Vec::new());
-    let decoding_status_hashmap: Arc<Mutex<HashMap<u64, bool>>> =
+    let decoding_status_hashmap: Arc<Mutex<HashMap<String, HashMap<u64, String>>>> =
         Arc::new(Mutex::new(HashMap::new()));
     loop {
+        // -- Receive packets and store them first
         let mut buffer = vec![0; MTU];
         match udp_service.recv_from(&mut buffer) {
             Ok((bytes, _)) => {
                 let recv_data = &buffer[..bytes];
+
                 temp_storage.push(recv_data.to_vec());
             }
             Err(e) => return Err(e.into()),
         }
-        // -- Parse packet and name them
-        let move_temp_f_c_s_counter = Arc::clone(&file_chunk_segment_counter);
+
+        let random_packet = temp_storage[0].to_owned();
+
+        // -- Can implement a minimum amount of packets to receive before processing (Not sure if helps in performance)
+        // if temp_storage.len() < 32 {
+        //     continue;
+        // }
+        // -- Obtain the packets in the temp storage and move them as will be used in spawed task
         let move_temp_storage: Vec<_> = temp_storage.drain(..temp_storage.len()).collect();
+
+        // -- Clone
+        let move_temp_f_c_s_counter = Arc::clone(&file_chunk_segment_counter);
         let move_temp_segment_template = Arc::clone(&segment_hashmap);
         let move_temp_decoding_status_hashmap = Arc::clone(&decoding_status_hashmap);
         task::spawn(async move {
+            // -- Loop not needed if min packets before processing is not set
             for packet in move_temp_storage.iter() {
                 let packet: Packet =
                     bincode::deserialize(&packet).expect("Unable to deserialise packet.");
@@ -91,23 +120,31 @@ pub fn main(udp_service: &UdpSocket) -> Result<()> {
                         .get_mut(&filename)
                         .unwrap()[chunk_id as usize] += 1
                 }
-
-                if !move_temp_decoding_status_hashmap
-                    .lock()
-                    .await
+                let mut temp_dec_status_hm = move_temp_decoding_status_hashmap.lock().await;
+                if !temp_dec_status_hm.contains_key(&filename) {
+                    temp_dec_status_hm.insert(filename.clone(), HashMap::new());
+                }
+                if !temp_dec_status_hm
+                    .get(&filename)
+                    .unwrap()
                     .contains_key(&chunk_id)
                 {
-                    move_temp_decoding_status_hashmap
-                        .lock()
-                        .await
-                        .insert(chunk_id, false);
+                    temp_dec_status_hm
+                        .get_mut(&filename)
+                        .unwrap()
+                        .insert(chunk_id, "Undecoded".to_string());
                 }
 
                 if number_of_segments_received
                     > (number_of_segments_expected - NUMBER_OF_REPAIR_SYMBOLS as u64)
-                    && move_temp_decoding_status_hashmap.lock().await[&chunk_id] == false
+                    && *temp_dec_status_hm
+                        .get(&filename)
+                        .unwrap()
+                        .get(&chunk_id)
+                        .unwrap()
+                        == "Undecoded".to_string()
                 {
-                    println!("->> Enough segment to decode");
+                    // println!("->> Enough segment to decode");
                     let (mut segments_name_to_decode, mut segments_to_decode) =
                         (Vec::new(), Vec::new());
                     for i in 0..number_of_segments_received {
@@ -120,24 +157,31 @@ pub fn main(udp_service: &UdpSocket) -> Result<()> {
                         segments_to_decode.push(segment_details.1.to_owned());
                         segment_hashmap.remove(&segment_name);
                     }
-                    println!("->> segments length: {}", segments_to_decode.len());
+                    // println!("->> segments length: {}", segments_to_decode.len());
                     // println!("->> segments name: {:?}", segments_name_to_decode);
-                    *move_temp_decoding_status_hashmap
-                        .lock()
-                        .await
+                    *temp_dec_status_hm
+                        .get_mut(&filename)
+                        .unwrap()
                         .get_mut(&chunk_id)
-                        .unwrap() = true;
-
+                        .unwrap() = "Decoding".to_string();
+                    let temp_2_dec_status_hm = Arc::clone(&move_temp_decoding_status_hashmap);
                     task::spawn(async move {
                         decode_segments(
                             segments_to_decode.to_owned(),
                             segments_name_to_decode,
                             MAX_SOURCE_SYMBOL_SIZE,
                             chunksize as usize,
-                            filename,
+                            filename.clone(),
                             chunk_id as usize,
                         )
-                        .await
+                        .await;
+                        *temp_2_dec_status_hm
+                            .lock()
+                            .await
+                            .get_mut(&filename)
+                            .unwrap()
+                            .get_mut(&chunk_id)
+                            .unwrap() = "Decoded".to_string();
                     });
                 }
 
@@ -156,9 +200,63 @@ pub fn main(udp_service: &UdpSocket) -> Result<()> {
             //     move_temp_f_c_s_counter.lock().await
             // );
         });
+        let move_2_temp_decoding_status_hashmap: Arc<Mutex<HashMap<String, HashMap<u64, String>>>> =
+            Arc::clone(&decoding_status_hashmap);
+        task::spawn(async move {
+            join_files(random_packet, move_2_temp_decoding_status_hashmap).await;
+        });
+        // join_files(random_packet, move_2_temp_decoding_status_hashmap).await;
     }
 
     Ok(())
+}
+
+async fn join_files(
+    packet: Vec<u8>,
+    decoding_status_hashmap: Arc<Mutex<HashMap<String, HashMap<u64, String>>>>,
+) {
+    let packet: Packet = bincode::deserialize(&packet).unwrap();
+    let filename = packet.preamble.filename;
+    let expected_chunks = packet.preamble.number_of_chunks_expected;
+    if !decoding_status_hashmap.lock().await.contains_key(&filename) {
+        return;
+    }
+    let received_and_decoded_chunks = decoding_status_hashmap
+        .lock()
+        .await
+        .get(&filename)
+        .unwrap()
+        .iter()
+        .map(|(_, v)| *v == "Decoded".to_string())
+        .count();
+    // println!(
+    //     "->> received and decoded chunks: {}",
+    //     received_and_decoded_chunks
+    // );
+    if received_and_decoded_chunks == expected_chunks as usize {
+        let mut final_file_bytes = Vec::new();
+        for i in 0..received_and_decoded_chunks {
+            let file_path = format!("./temp/{}_{}.txt", filename, i);
+
+            match fs::read(&file_path).await {
+                Ok(mut partial_file_bytes) => {
+                    final_file_bytes.append(&mut partial_file_bytes);
+                }
+                Err(_) => return,
+            }
+
+            if final_file_bytes.len() > 6_000_000_000 {
+                // -- TODO: Write to file first if file is large (e.g 12 GB and up depends on RAM size)
+                todo!()
+            }
+        }
+        let final_file_path = format!("./receiving_dir/{}", filename);
+        fs::write(final_file_path, final_file_bytes).await.unwrap();
+        for i in 0..received_and_decoded_chunks {
+            let file_path = format!("./temp/{}_{}.txt", filename, i);
+            let _ = fs::remove_file(file_path).await;
+        }
+    }
 }
 
 async fn decode_segments(
