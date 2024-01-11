@@ -202,10 +202,10 @@ pub async fn main(udp_service: &UdpSocket) -> Result<()> {
         });
         let move_2_temp_decoding_status_hashmap: Arc<Mutex<HashMap<String, HashMap<u64, String>>>> =
             Arc::clone(&decoding_status_hashmap);
-        task::spawn(async move {
-            join_files(random_packet, move_2_temp_decoding_status_hashmap).await;
-        });
-        // join_files(random_packet, move_2_temp_decoding_status_hashmap).await;
+        // task::spawn(async move {
+        //     join_files(random_packet, move_2_temp_decoding_status_hashmap).await;
+        // });
+        join_files(random_packet, move_2_temp_decoding_status_hashmap).await;
     }
 
     Ok(())
