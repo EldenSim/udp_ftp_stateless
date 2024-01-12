@@ -81,9 +81,9 @@ pub async fn main(udp_service: &UdpSocket) -> Result<()> {
         let random_packet = storage[0].to_owned();
 
         // -- Can implement a minimum amount of packets to receive before processing (Not sure if helps in performance)
-        // if storage.len() < 5 {
-        //     continue;
-        // }
+        if storage.len() < 64 {
+            continue;
+        }
         // -- Obtain the packets in the temp storage and move them as will be used in spawed task
         let processing_storage: Vec<_> = storage.drain(..storage.len()).collect();
 
