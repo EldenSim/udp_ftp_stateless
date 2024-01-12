@@ -79,7 +79,7 @@ pub async fn main(udp_service: &UdpSocket) -> Result<()> {
         let random_packet = storage[0].to_owned();
 
         // -- Can implement a minimum amount of packets to receive before processing (Not sure if helps in performance)
-        // if temp_storage.len() < 32 {
+        // if storage.len() < 5 {
         //     continue;
         // }
         // -- Obtain the packets in the temp storage and move them as will be used in spawed task
@@ -120,10 +120,15 @@ pub async fn main(udp_service: &UdpSocket) -> Result<()> {
                         .unwrap()
                         .insert(chunk_segment_name.clone(), packet.data);
                 } else {
+                    // println!("->> Inserting cs name: {}", chunk_segment_name);
                     temp_f_s_hashmap
                         .get_mut(&filename)
                         .unwrap()
                         .insert(chunk_segment_name.clone(), packet.data);
+                    // println!(
+                    //     "->> len segment hashmap: {}",
+                    //     temp_f_s_hashmap.get(&filename).unwrap().len()
+                    // );
                 }
 
                 // -----
@@ -156,9 +161,12 @@ pub async fn main(udp_service: &UdpSocket) -> Result<()> {
                 // }
                 let mut temp_dec_stat_hashmap = pointer_decoding_status_hashmap.lock().await;
                 if !temp_dec_stat_hashmap.contains_key(&filename) {
+                    temp_dec_stat_hashmap.insert(filename.clone(), HashMap::new());
+                    // .and_then(|mut hashmap| hashmap.insert(chunk_id, "Undecoded".to_string()));
                     temp_dec_stat_hashmap
-                        .insert(filename.clone(), HashMap::new())
-                        .and_then(|mut hashmap| hashmap.insert(chunk_id, "Undecoded".to_string()));
+                        .get_mut(&filename)
+                        .unwrap()
+                        .insert(chunk_id, "Undecoded".to_string());
                 }
                 if !temp_dec_stat_hashmap
                     .get(&filename)
@@ -183,19 +191,28 @@ pub async fn main(udp_service: &UdpSocket) -> Result<()> {
                     // println!("->> Enough segment to decode");
                     let (mut segments_name_to_decode, mut segments_to_decode) =
                         (Vec::new(), Vec::new());
-                    let temp_segment_hashmap = temp_f_s_hashmap.get_mut(&filename).unwrap();
-
-                    for i in 0..number_of_segments_received {
-                        let segment_name = format!("c_{}_s_{}", chunk_id, i);
+                    // let mut temp_f_s_hashmap_2 = pointer_file_segment_hashmap.lock().await;
+                    // let temp_segment_hashmap = temp_f_s_hashmap_2.get_mut(&filename).unwrap();
+                    // let temp_segment_hashmap = temp_f_s_hashmap.get_mut(&filename).unwrap();
+                    let segments_received: Vec<_> =
+                        temp_f_s_hashmap.get(&filename).unwrap().keys().collect();
+                    // for i in 0..number_of_segments_received {
+                    for segment_name in segments_received {
+                        // let segment_name = format!("c_{}_s_{}", chunk_id, i);
                         // println!("->> segment name: {}", segment_name);
                         // let temp_2_segment_hashmap = move_temp_segment_template.lock().await;
 
-                        let segment_details =
-                            temp_segment_hashmap.get_key_value(&segment_name).unwrap();
+                        let segment_bytes = temp_f_s_hashmap
+                            .get(&filename)
+                            .unwrap()
+                            .get(segment_name)
+                            .unwrap();
                         // println!("->> Segment details: {:?}", segment_details.0);
-                        segments_name_to_decode.push(segment_details.0.to_string());
-                        segments_to_decode.push(segment_details.1.to_owned());
-                        temp_segment_hashmap.remove(&segment_name).unwrap();
+                        // segments_name_to_decode.push(segment_details.0.to_string());
+                        // segments_to_decode.push(segment_details.1.to_owned());
+                        segments_name_to_decode.push(segment_name.to_string());
+                        segments_to_decode.push(segment_bytes.to_owned());
+                        // temp_segment_hashmap.remove(&segment_name).unwrap();
                     }
                     // println!("->> segments length: {}", segments_to_decode.len());
                     // println!("->> segments name: {:?}", segments_name_to_decode);
@@ -210,7 +227,7 @@ pub async fn main(udp_service: &UdpSocket) -> Result<()> {
 
                     task::spawn(async move {
                         decode_segments(
-                            segments_to_decode.to_owned(),
+                            segments_to_decode,
                             segments_name_to_decode,
                             MAX_SOURCE_SYMBOL_SIZE,
                             chunksize as usize,
@@ -293,10 +310,10 @@ async fn merge_temp_files(
         .iter()
         .map(|(_, v)| *v == "Decoded".to_string())
         .count();
-    // println!(
-    //     "->> received and decoded chunks: {}",
-    //     received_and_decoded_chunks
-    // );
+    println!(
+        "->> received and decoded chunks: {}",
+        received_and_decoded_chunks
+    );
     if received_and_decoded_chunks == expected_chunks as usize {
         let mut final_file_bytes = Vec::new();
         for i in 0..received_and_decoded_chunks {
@@ -315,11 +332,11 @@ async fn merge_temp_files(
             }
         }
         let final_file_path = format!("./receiving_dir/{}", filename);
+        fs::write(final_file_path, final_file_bytes).await.unwrap();
         for i in 0..received_and_decoded_chunks {
             let file_path = format!("./temp/{}_{}.txt", filename, i);
             let _ = fs::remove_file(file_path).await;
         }
-        fs::write(final_file_path, final_file_bytes).await.unwrap();
         return (true, Some(filename));
     };
     (false, None)
