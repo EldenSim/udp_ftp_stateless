@@ -63,6 +63,8 @@ pub async fn main(udp_service: &UdpSocket) -> Result<()> {
     let mut storage = Box::new(Vec::new());
     let decoding_status_hashmap: Arc<Mutex<HashMap<String, HashMap<u64, String>>>> =
         Arc::new(Mutex::new(HashMap::new()));
+    let merging_status_hashmap: Arc<Mutex<HashMap<String, bool>>> =
+        Arc::new(Mutex::new(HashMap::new()));
     // let mut files_complete = Box::new(Vec::new());
     loop {
         // -- Receive packets and store them first
@@ -89,6 +91,7 @@ pub async fn main(udp_service: &UdpSocket) -> Result<()> {
         let pointer_f_c_s_counter = Arc::clone(&file_chunk_segment_counter);
         let pointer_file_segment_hashmap = Arc::clone(&file_segment_hashmap);
         let pointer_decoding_status_hashmap = Arc::clone(&decoding_status_hashmap);
+        let pointer_merging_status_hashmap = Arc::clone(&merging_status_hashmap);
         // let pointer_2_decoding_status_hashmap = Arc::clone(&decoding_status_hashmap);
         task::spawn(async move {
             // -- Loop not needed if min packets before processing is not set
@@ -180,7 +183,7 @@ pub async fn main(udp_service: &UdpSocket) -> Result<()> {
                 }
 
                 if number_of_segments_received
-                    > (number_of_segments_expected - NUMBER_OF_REPAIR_SYMBOLS as u64)
+                    >= (number_of_segments_expected - NUMBER_OF_REPAIR_SYMBOLS as u64)
                     && *temp_dec_stat_hashmap
                         .get(&filename)
                         .unwrap()
@@ -194,28 +197,38 @@ pub async fn main(udp_service: &UdpSocket) -> Result<()> {
                     // let mut temp_f_s_hashmap_2 = pointer_file_segment_hashmap.lock().await;
                     // let temp_segment_hashmap = temp_f_s_hashmap_2.get_mut(&filename).unwrap();
                     // let temp_segment_hashmap = temp_f_s_hashmap.get_mut(&filename).unwrap();
-                    let segments_received: Vec<_> =
-                        temp_f_s_hashmap.get(&filename).unwrap().keys().collect();
-                    // for i in 0..number_of_segments_received {
-                    for segment_name in segments_received {
-                        // let segment_name = format!("c_{}_s_{}", chunk_id, i);
-                        // println!("->> segment name: {}", segment_name);
-                        // let temp_2_segment_hashmap = move_temp_segment_template.lock().await;
-
-                        let segment_bytes = temp_f_s_hashmap
+                    // let segments_received: Vec<_> =
+                    //     temp_f_s_hashmap.get(&filename).unwrap().keys().collect();
+                    // for segment_name in segments_received {
+                    //     segments_to_decode.push(
+                    //         temp_f_s_hashmap
+                    //             .get(&filename)
+                    //             .unwrap()
+                    //             .get(segment_name)
+                    //             .unwrap()
+                    //             .to_owned(),
+                    //     );
+                    //     segments_name_to_decode.push(segment_name.to_owned())
+                    // }
+                    println!("->> num seg rece: {}", number_of_segments_received);
+                    for i in 0..number_of_segments_received {
+                        // let mut enough_segment = false;
+                        let chunk_segment_name = format!("c_{}_s_{}", chunk_id, i);
+                        let segment_option = temp_f_s_hashmap
                             .get(&filename)
                             .unwrap()
-                            .get(segment_name)
-                            .unwrap();
-                        // println!("->> Segment details: {:?}", segment_details.0);
-                        // segments_name_to_decode.push(segment_details.0.to_string());
-                        // segments_to_decode.push(segment_details.1.to_owned());
-                        segments_name_to_decode.push(segment_name.to_string());
-                        segments_to_decode.push(segment_bytes.to_owned());
-                        // temp_segment_hashmap.remove(&segment_name).unwrap();
+                            .get(&chunk_segment_name);
+                        match segment_option {
+                            Some(segment) => {
+                                segments_to_decode.push(segment.to_owned());
+                                segments_name_to_decode.push(chunk_segment_name);
+                                // enough_segment = true;
+                            }
+                            None => {
+                                continue;
+                            }
+                        }
                     }
-                    // println!("->> segments length: {}", segments_to_decode.len());
-                    // println!("->> segments name: {:?}", segments_name_to_decode);
                     *temp_dec_stat_hashmap
                         .get_mut(&filename)
                         .unwrap()
@@ -224,9 +237,10 @@ pub async fn main(udp_service: &UdpSocket) -> Result<()> {
                     // let mut temp_dec_stat_hashmap = pointer_2_decoding_status_hashmap.lock().await;
                     let pointer_2_decoding_status_hashmap =
                         Arc::clone(&pointer_decoding_status_hashmap);
-
+                    let pointer_2_merging_status_hashmap =
+                        Arc::clone(&pointer_merging_status_hashmap);
                     task::spawn(async move {
-                        decode_segments(
+                        let chunk_decoded = decode_segments(
                             segments_to_decode,
                             segments_name_to_decode,
                             MAX_SOURCE_SYMBOL_SIZE,
@@ -235,13 +249,26 @@ pub async fn main(udp_service: &UdpSocket) -> Result<()> {
                             chunk_id as usize,
                         )
                         .await;
+
                         let mut temp_2_dec_stat_hashmap =
                             pointer_2_decoding_status_hashmap.lock().await;
-                        *temp_2_dec_stat_hashmap
-                            .get_mut(&filename)
-                            .unwrap()
-                            .get_mut(&chunk_id)
-                            .unwrap() = "Decoded".to_string();
+                        if !chunk_decoded {
+                            *temp_2_dec_stat_hashmap
+                                .get_mut(&filename)
+                                .unwrap()
+                                .get_mut(&chunk_id)
+                                .unwrap() = "Undecoded".to_string();
+                        } else {
+                            *temp_2_dec_stat_hashmap
+                                .get_mut(&filename)
+                                .unwrap()
+                                .get_mut(&chunk_id)
+                                .unwrap() = "Decoded".to_string();
+                            pointer_2_merging_status_hashmap
+                                .lock()
+                                .await
+                                .insert(filename.clone(), false);
+                        }
                     });
                 }
 
@@ -262,12 +289,17 @@ pub async fn main(udp_service: &UdpSocket) -> Result<()> {
         });
         let pointer_2_decoding_status_hashmap: Arc<Mutex<HashMap<String, HashMap<u64, String>>>> =
             Arc::clone(&decoding_status_hashmap);
+        let pointer_2_merging_status_hashmap = Arc::clone(&merging_status_hashmap);
         // task::spawn(async move {
         //     join_files(random_packet, move_2_temp_decoding_status_hashmap).await;
         // });
         // -- Try to join files if all chunks are decoded, if not continue loop.
-        let (completed, completed_filename) =
-            merge_temp_files(random_packet, pointer_2_decoding_status_hashmap).await;
+        let (completed, completed_filename) = merge_temp_files(
+            random_packet,
+            pointer_2_decoding_status_hashmap,
+            pointer_2_merging_status_hashmap,
+        )
+        .await;
         // // -- After generating main file, need to drop the data in the Hashmaps to free up memory
 
         if completed {
@@ -295,9 +327,23 @@ pub async fn main(udp_service: &UdpSocket) -> Result<()> {
 async fn merge_temp_files(
     packet: Vec<u8>,
     decoding_status_hashmap: Arc<Mutex<HashMap<String, HashMap<u64, String>>>>,
+    merging_status_hashmap: Arc<Mutex<HashMap<String, bool>>>,
 ) -> (bool, Option<String>) {
     let packet: Packet = bincode::deserialize(&packet).unwrap();
     let filename = packet.preamble.filename;
+    match merging_status_hashmap.lock().await.get(&filename) {
+        Some(status) => {
+            if *status {
+                return (false, None);
+            }
+        }
+        None => {
+            return (false, None);
+        }
+    }
+    // if *merging_status_hashmap.lock().await.get(&filename).unwrap() == true {
+    //     return (false, None);
+    // }
     let expected_chunks = packet.preamble.number_of_chunks_expected;
     if !decoding_status_hashmap.lock().await.contains_key(&filename) {
         return (false, None);
@@ -315,6 +361,11 @@ async fn merge_temp_files(
         received_and_decoded_chunks
     );
     if received_and_decoded_chunks == expected_chunks as usize {
+        *merging_status_hashmap
+            .lock()
+            .await
+            .get_mut(&filename)
+            .unwrap() = true;
         let mut final_file_bytes = Vec::new();
         for i in 0..received_and_decoded_chunks {
             let file_path = format!("./temp/{}_{}.txt", filename, i);
@@ -323,7 +374,14 @@ async fn merge_temp_files(
                 Ok(mut partial_file_bytes) => {
                     final_file_bytes.append(&mut partial_file_bytes);
                 }
-                Err(_) => return (false, None),
+                Err(_) => {
+                    *merging_status_hashmap
+                        .lock()
+                        .await
+                        .get_mut(&filename)
+                        .unwrap() = false;
+                    return (false, None);
+                }
             }
 
             if final_file_bytes.len() > 6_000_000_000 {
@@ -349,24 +407,43 @@ async fn decode_segments(
     chunksize: usize,
     filename: String,
     chunk_id: usize,
-) {
+) -> bool {
+    println!("->> seg name to dec: {:?}", segments_name_to_decode);
     let mut decoder = raptor_code::SourceBlockDecoder::new(max_source_symbol_size);
     let mut i = 0;
-    while !decoder.fully_specified() {
-        let esi = segments_name_to_decode[i].split("_").collect::<Vec<_>>()[3]
+    for (i, segment) in segments_to_decode.iter().enumerate() {
+        let esi = segments_name_to_decode[i]
+            .split("_")
+            .collect::<Vec<_>>()
+            .get(3)
+            .unwrap()
             .parse::<u32>()
             .unwrap();
-        decoder.push_encoding_symbol(&segments_to_decode[i], esi);
-        i += 1
+        decoder.push_encoding_symbol(segment, esi);
     }
+    if !decoder.fully_specified() {
+        return false;
+    }
+    // while !decoder.fully_specified() {
+    //     let esi = segments_name_to_decode[i].split("_").collect::<Vec<_>>()[3]
+    //         .parse::<u32>()
+    //         .unwrap();
+    //     decoder.push_encoding_symbol(&segments_to_decode[i], esi);
+    //     i += 1;
+    //     if i > segments_name_to_decode.len() {
+    //         return false;
+    //     }
+    // }
 
     let reconstructed_chunk = decoder
         .decode(chunksize)
         .ok_or("Unable to decode message")
         .unwrap();
+
     println!("->> Decoded DONE");
     let chunk_file_path = format!("./temp/{}_{}.txt", filename, chunk_id);
     fs::write(chunk_file_path, reconstructed_chunk)
         .await
-        .unwrap()
+        .unwrap();
+    true
 }
