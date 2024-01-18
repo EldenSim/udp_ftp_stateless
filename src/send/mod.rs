@@ -1,17 +1,12 @@
 // region:    --- Modules
 
-use rand::seq::SliceRandom;
-use rand::thread_rng;
 use std::net::UdpSocket;
 use std::path::PathBuf;
-use std::str::FromStr;
 use std::time::Duration;
 use std::{env, fs, thread};
 
 use udp_ftp_stateless::Result;
 use udp_ftp_stateless::{EncoderConfig, Packet, Preamble};
-
-use uuid::{uuid, Uuid};
 
 // endregion: --- Modules
 
