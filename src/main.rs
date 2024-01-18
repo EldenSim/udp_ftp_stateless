@@ -1,7 +1,8 @@
 // region:    --- modules
 
-use std::env;
 use std::net::UdpSocket;
+use std::time::Duration;
+use std::{env, thread};
 
 use dotenv::dotenv;
 use udp_ftp_stateless::Result;
@@ -27,8 +28,10 @@ fn main() -> Result<()> {
             let udp_service = udp::init_udp_service(&LOCAL_ADDRESS, port)?;
             let foreign_port = "8001";
             udp::connect_to_foreign_addr(&udp_service, &FOREIGN_ADDRESS, foreign_port)?;
-
-            send::main(&udp_service)?;
+            for i in 0..1 {
+                send::main(&udp_service)?;
+                thread::sleep(Duration::from_millis(0));
+            }
         }
         // -- Recv operation mode
         "recv" => {

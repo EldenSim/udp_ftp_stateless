@@ -1,9 +1,12 @@
 // region:    --- Modules
 
+use rand::seq::SliceRandom;
+use rand::thread_rng;
 use std::net::UdpSocket;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::{env, fs};
+use std::time::Duration;
+use std::{env, fs, thread};
 
 use udp_ftp_stateless::Result;
 use udp_ftp_stateless::{EncoderConfig, Packet, Preamble};
@@ -37,6 +40,7 @@ pub fn main(udp_service: &UdpSocket) -> Result<()> {
         } else {
             send_file_with_raptor(&path, udp_service, chunksize, &encoder_config)?;
         }
+        thread::sleep(Duration::from_millis(0))
     }
 
     // endregion: --- Loop through sending folder
@@ -58,14 +62,16 @@ fn send_file_with_raptor(
     let chunks: Vec<_> = file.chunks(chunksize).collect();
     let total_number_of_chunks = chunks.len();
     println!("->> Number of chunks: {}", total_number_of_chunks);
+    let mut total_num_of_symbols = 0;
     for (chunk_id, chunk) in chunks.iter().enumerate() {
         // println!("->> Chunk id: {}", chunk_id);
         let chunksize = chunk.len();
         let mut encoder =
             raptor_code::SourceBlockEncoder::new(chunk, encoder_config.max_source_symbol_size);
-        let total_num_of_symbols =
+        total_num_of_symbols =
             encoder.nb_source_symbols() as usize + encoder_config.number_of_repair_symbols;
-        println!("->> Number of segment: {}", total_num_of_symbols);
+        // println!("->> Number of segment: {}", total_num_of_symbols);
+        // let mut segment_buffer = Vec::new();
         for segment_id in 0..total_num_of_symbols {
             // println!("\t->> Segmnet id: {}", segment_id);
             // -- Obtain encoding_symbols
@@ -95,6 +101,31 @@ fn send_file_with_raptor(
             // -- Send Packet
             udp_service.send(&packet_bytes).expect("Send packet error");
         }
+
+        thread::sleep(Duration::from_millis(50))
+    }
+    let number_of_padding_packets = 256 - (total_number_of_chunks * total_num_of_symbols) % 256;
+    let empty_preamble = Preamble {
+        filename: "".to_string(),
+        filesize: 0,
+        chunk_id: 0,
+        chunksize: 0,
+        number_of_chunks_expected: 0,
+        segment_id: 0,
+        number_of_segments_expected: 0,
+    };
+    let empty_packet = Packet {
+        pre_padding: 0,
+        preamble: empty_preamble,
+        mid_padding: 0,
+        data: vec![0],
+        post_padding: 0,
+    };
+    let empty_packet_bytes = bincode::serialize(&empty_packet)?;
+    for i in 0..number_of_padding_packets + 1 {
+        udp_service
+            .send(&empty_packet_bytes)
+            .expect("Send empty packet error");
     }
 
     Ok(())
