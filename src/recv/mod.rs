@@ -1,7 +1,6 @@
 #![allow(non_snake_case)]
 // region:    --- Modules
 
-use std::collections::HashMap;
 use std::env;
 use std::net::UdpSocket;
 use std::os::unix::fs::MetadataExt;
@@ -30,6 +29,9 @@ pub async fn main(udp_service: &UdpSocket) -> Result<()> {
         .parse::<usize>()?;
     let MTU = env::var("MTU")
         .expect("MTU env var not set")
+        .parse::<usize>()?;
+    let PROCESSING_STORAGE = env::var("PROCESSING_STORAGE")
+        .expect("PROCESSING_STORAGE env var not set")
         .parse::<usize>()?;
 
     // -- Initialise the storage vectors
@@ -67,7 +69,7 @@ pub async fn main(udp_service: &UdpSocket) -> Result<()> {
 
         // -- Can implement a minimum amount of packets to receive before processing, amount will impact performace
         // -- 64 and 256 tested to work well
-        if storage.len() < 64 {
+        if storage.len() < PROCESSING_STORAGE {
             continue;
         }
         // -- Obtain the packets in the temp storage and move them as will be used in spawed task
