@@ -11,10 +11,6 @@ For improvements:
 
 -   Use RaptorQ error correction code (Faster encoding and decoding times)
 
-For improvements:
-
--   Use RaptorQ error correction code (Faster encoding and decoding times)
-
 # Environment Variables
 
 ```
@@ -25,11 +21,11 @@ SENDING_DIRECTORY=./sending_dir
 RECEIVING_DIRECTORY=./receiving_dir
 ```
 
--   FTP_MODE: send / recv (sets programme into respective mode)
--   LOCAL_ADDRESS: Valid IPv4 address (local machine's IPv4 address)
--   FOREIGN_ADDRESS: Valid IPv4 address (receiving machine's IPv4 address)
--   SENDING_DIR: Directory for files to be sent
--   RECEIVING_DIRECTORY: Directory for final files to be written after processing
+-   `FTP_MODE`: send / recv (sets programme into respective mode)
+-   `LOCAL_ADDRESS`: Valid IPv4 address (local machine's IPv4 address)
+-   `FOREIGN_ADDRESS`: Valid IPv4 address (receiving machine's IPv4 address)
+-   `SENDING_DIR`: Directory for files to be sent
+-   `RECEIVING_DIRECTORY`: Directory for final files to be written after processing
 
 ```
 MTU=9000
@@ -41,34 +37,32 @@ DELAY_PER_FILE=0
 PROCESSING_STORAGE=256
 ```
 
--   MTU: Maximum Transmission Limit (Limits packet size)
--   Maximum packet size that can be trasmitted through the network.
--   MAX_CHUNKSIZE: Max chunksize for a large file to be split into to fit MTU
+-   `MTU`: Maximum Transmission Limit (Limits packet size)
+    -   Maximum packet size that can be trasmitted through the network.
+-   `MAX_CHUNKSIZE`: Max chunksize for a large file to be split into to fit `MTU`
 
-    -   After encoding, encoded symbols will be larger than original symbols, thus we will limit the size of the chunk before encoding to ensure that the encoded symbol will fit the MTU limit
-    -   E.g. For a MTU = 9000, the maximum chunksize is
-    -   `MTU * MAX_SOURCE_SYMBOL_SIZE = 9000 * 64 = 576_000`
-    -   But packet preamble takes some space so we can limit chunksize to 500_000
+    -   After encoding, encoded symbols will be larger than original symbols, thus we will limit the size of the chunk before encoding to ensure that the encoded symbol will fit the `MTU` limit
+    -   E.g. For a `MTU` = 9000, the maximum chunksize is `MTU * MAX_SOURCE_SYMBOL_SIZE = 9000 * 64 = 576_000`. But packet preamble takes some space so we can limit chunksize to 500_000
 
--   MAX_SOURCE_SYMBOL_SIZE: Raptor Code variable
+-   `MAX_SOURCE_SYMBOL_SIZE`: Raptor Code variable
     -   Larger the symbol size, the smaller the encoded symbols size
--   NUMBER_OF_REPAIR_SYMBOLS: Raptor Code variable
+-   `NUMBER_OF_REPAIR_SYMBOLS`: Raptor Code variable
 
-    -   Increases the number of symbols sent, so even if more packets are lost, received is still able to reconstruct data
+    -   Increases the number of symbols sent, so even if more packets are lost, receiver is still able to reconstruct data
     -   E.g. Total symbols sent = 256 packets, I only need to receive 128 packets to reconstruct the data
 
--   DELAY_PER_CHUNK: Delay sender from sending after every Chunk (Default: 40 for reliable file transfer)
+-   `DELAY_PER_CHUNK`: Delay sender from sending after every Chunk (Default: 40 for reliable file transfer)
 
--   DELAY_PER_FILE: Delay sender from sending after every File
+-   `DELAY_PER_FILE`: Delay sender from sending after every File
 
--   PROCESSING_STORAGE: Receiver will wait for this amount of packets before processing (Default: 256)
+-   `PROCESSING_STORAGE`: Receiver will wait for this amount of packets before processing (Default: 256)
 
 # Sender programme logic
 
 1. Bind UDPSocket to IP address
 2. Connect Recv IP address to UDPSocket
 3. Calculate max chunksize to split file into
-4. Loop through each file in SENDING_DIRECTORY
+4. Loop through each file in `SENDING_DIRECTORY`
     1. Break files into chunks
     2. Initialise Raptor Encoder
     3. Loop through total number of symbols (num of source symbol + num of repair symbol)
@@ -76,7 +70,7 @@ PROCESSING_STORAGE=256
         2. Initialise Preamble and Packet
         3. Serialise Packet into bytes
         4. Send Packet
-    4. Sleep for DELAY_PER_CHUNK time
+    4. Sleep for `DELAY_PER_CHUNK` time
     5. Calculate number of empty Packets to send
     6. Initialise empty Packets
     7. Serialise empty Packet
@@ -88,7 +82,6 @@ PROCESSING_STORAGE=256
 
 1. Bind UDPSocket to IP address
 2. Within loop
-
     1. Initialise storage vectors
         - `file_chunk_segment`: Keep track of number of segments received
         - `file_data`: Keeps segment data only
@@ -97,18 +90,16 @@ PROCESSING_STORAGE=256
         - `files_to_be_merged`: Keeps track of files that have not been merged
     1. Listen for incomming Packets
     1. Store received Packets into `storage`
-    1. Check if storage contains enough Packets (PROCESSING_STORAGE), if not enough skip this iteration (go to step 2.1)
+    1. Check if storage contains enough Packets (`PROCESSING_STORAGE`), if not enough skip this iteration (go to step 2.1)
     1. Drain Packets in `storage` into `processing_storage`
     1. Clone the storage vectors
     1. Spawn a task to parse the Packets
-
         1. Loop through the packets in `processing_storage`
-
             1. Check if Packet is an empty Packet if so skip this Packet
             1. Check if file already exist in `receiving_dir` and filesize matches, if so skip this Packet
             1. Check if file is in `files_to_be_merged`, add if not
             1. Add `FileData` struct with filename and empty `chunk_segment_data` vec
-            1. Add `ChunkSegmentData` struct with `chunk_segment name` and packet data.
+            1. Add `ChunkSegmentData` struct with `chunk_segment_name` and packet `data`.
             1. Add `FileChunkSegment` into `file_chunk_segment` and increment the counter for the chunk segment by 1
             1. Obtain number of segment received
             1. Add `DecodingStatus` into `decoding_status` with "Undecoded" if new chunk
@@ -116,14 +107,11 @@ PROCESSING_STORAGE=256
             1. Collect the segments into another vec
             1. Change chunk status in `decoding_status` to "Decoding"
             1. Spawn a new task to handle the decoding of segments
-
                 1. Try to decode chunk
-                1. If successful, write chunk into file and store in `./temp/`, change chunk_status to "Decoded" and add `MergingStatus` struct to `merging_status`
+                1. If successful, write chunk into file and store in `./temp/`, change `chunk_status` to "Decoded" and add `MergingStatus` struct to `merging_status`
                 1. If not successful, change chunk_status to "Undecoded"
-
     1. Clone storage vector again
     1. Spawn a task to handle merging of files
-
         1. Try to merge file using `merge_temp_files`
         1. If successful, remove finished file data from storage vectors
         1. If not successful, return from task and continue loop
