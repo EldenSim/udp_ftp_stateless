@@ -2,6 +2,8 @@
 
 The UDP FTP was developed for the purpose of transferring files from one machine to another through a one-way data diode. The following documents how to set up the programme, some of its limitation and areas of improvement. As a novice in Rust, there may be some mistakes in optimisation in the code.
 
+NOTE: UDP FTP does not support nested folders to be sent, so for nested folders please tar or compress the folder before sending over. (Possible feature to be added in the future)
+
 # Error Correction
 
 Error Correction is used as packets may be lost during data tranmission through UDP. Thus, Raptor Codes are used as FEC.
@@ -80,6 +82,8 @@ PROCESSING_STORAGE=256
 
 # Receiver programme logic
 
+This is a rough breakdown of
+
 1. Bind UDPSocket to IP address
 2. Within loop
     1. Initialise storage vectors
@@ -115,3 +119,12 @@ PROCESSING_STORAGE=256
         1. Try to merge file using `merge_temp_files`
         1. If successful, remove finished file data from storage vectors
         1. If not successful, return from task and continue loop
+
+# Possible Areas of Improvement
+
+-   Handling of nested folder structure (i.e Able to retain folder structure during transmission)
+-   Use of different FEC to speed up encoding and decoding times
+    -   RaptorQ
+-   Optimising Receiver logic
+    -   Compact the `storages` vec into one vec with a struct that contains all information
+-   More efficient handling of shared memory on heap, instead of `Arc<Mutex<T>>` types
