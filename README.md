@@ -1,6 +1,6 @@
 # UDP File Transfer Protocol (UDP FTP)
 
-The UDP FTP was developed for the purpose of transferring files from one machine to another through a one-way data diode. The following documents how to set up the programme, some of its limitation and areas of improvement. As a novice in Rust, there may be some mistakes in optimisation in the code.
+The UDP FTP was developed for the purpose of transferring files from one machine to another through a one-way data diode. The following documents how to set up the programme, some of its limitation and areas of improvement. As a novice in Rust, there may be some areas for improvement in the code.
 
 NOTE: UDP FTP does not support nested folders to be sent, so for nested folders please tar or compress the folder before sending over. (Possible feature to be added in the future)
 
