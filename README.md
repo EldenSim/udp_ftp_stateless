@@ -27,8 +27,10 @@ RECEIVING_DIRECTORY=./receiving_dir
 -   `FTP_MODE`: send / recv (sets programme into respective mode)
 -   `LOCAL_ADDRESS`: Valid IPv4 address (local machine's IPv4 address)
 -   `FOREIGN_ADDRESS`: Valid IPv4 address (receiving machine's IPv4 address)
+    Features to be added:
 -   `SENDING_DIR`: Directory for files to be sent
 -   `RECEIVING_DIRECTORY`: Directory for final files to be written after processing
+    Now sending and receiving directory is the default `sending_dir` and `receiving_dir`
 
 ```
 MTU=9000

@@ -367,7 +367,7 @@ async fn merge_temp_files(
     pointer_merging_status_storage: Arc<Mutex<Box<Vec<MergingStatus>>>>,
 ) -> (bool, Option<String>) {
     // Obtain filename
-    let mut files_to_be_merged_vec = pointer_files_to_be_merged_vec.lock().await;
+    let files_to_be_merged_vec = pointer_files_to_be_merged_vec.lock().await;
     let filename = match files_to_be_merged_vec.last() {
         Some(filename) => filename.to_owned(),
         None => return (false, None),
@@ -431,6 +431,7 @@ async fn merge_temp_files(
         // Write to final file using io::copy method, used for big files as size to big to store in memory before write (method 2)
         // NOTE: Depending on storage size before parsing, if too low merged file will run before last chunk decoded (WIP)
         if chunksize as usize * received_and_decoded_chunks > 3_000_000_000 {
+            // Default path: "./receiving_dir/{filename}"
             let temp_final_file_path = format!("./receiving_dir/{}", filename);
             for i in 0..received_and_decoded_chunks {
                 let file_2_path = format!("./temp/{}_{}.txt", filename, i);
