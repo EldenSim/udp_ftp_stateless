@@ -8,6 +8,7 @@ NOTE: UDP FTP does not support nested folders to be sent, so for nested folders 
 
 Error Correction is used as packets may be lost during data tranmission through UDP. Thus, Raptor Codes are used as FEC.
 Raptor Codes was chosen as it is a fountain code, in which x amount of packets need to be received for the decoder to reconstruct the original data. This means the receiver does not need to receive packets in order (i.e Packet 1 then Packet 2).
+The Raptor Encoder and Decoder used is from the `raptor_codes` crate from https://docs.rs/raptor-code/latest/raptor_code/ and https://github.com/ypo/raptor .
 
 For improvements:
 
