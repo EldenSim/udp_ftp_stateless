@@ -476,7 +476,7 @@ async fn merge_temp_files(
             // Remove all temp files used to clean up
             for i in 0..received_and_decoded_chunks {
                 let file_path = format!("./temp/{}_{}.txt", filename, i);
-                let _ = fs::remove_file(file_path).await;
+                // let _ = fs::remove_file(file_path).await;
             }
             return (true, Some(filename));
         }

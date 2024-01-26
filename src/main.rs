@@ -36,6 +36,7 @@ async fn main() -> Result<()> {
             let port = "8001";
             let udp_service = udp::init_udp_service(&LOCAL_ADDRESS, port)?;
             recv::main(udp_service).await?;
+            // recv::main(&udp_service).await?;
         }
         _ => {
             return Err("Invalid FTP_MODE variable, FTP_MODE only operable in RECV or SEND".into());
