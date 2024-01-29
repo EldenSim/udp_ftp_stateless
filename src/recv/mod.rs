@@ -182,10 +182,10 @@ async fn processing_packets(
                     .clone();
             }
         }
-        println!(
-            "->> File details check: {:?}",
-            file_details_storage_lock[0].num_segments_recv_per_chunk
-        );
+        // println!(
+        //     "->> File details check: {:?}",
+        //     file_details_storage_lock[0].num_segments_recv_per_chunk
+        // );
 
         if decode_flag {
             // println!("Decoding: {}", chunk_id);
