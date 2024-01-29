@@ -62,21 +62,6 @@ pub async fn main(udp_service: UdpSocket) -> Result<()> {
 
     recv_packets(&udp_service, received_packets).await.unwrap();
 
-    // task::Builder::new()
-    //     .name("Receiving Task".to_string())
-    //     .spawn(async move {
-    //         recv_packets(&udp_service, pointer_received_packets)
-    //             .await
-    //             .unwrap()
-    //     })?;
-    // recv_packets(udp_service, pointer_received_packets).await?;
-
-    // thread::Builder::new()
-    //     .name("Processing Thread".to_string())
-    //     .spawn(move || {
-    //         processing_packets(pointer_2_received_packets, pointer_file_details_storage).await;
-    //     })?;
-
     Ok(())
 }
 
@@ -87,12 +72,8 @@ async fn processing_packets(
     MAX_SOURCE_SYMBOL_SIZE: usize,
 ) {
     loop {
-        // let mut filename = String::new();
-        // let mut chunk_id = 0;
-        let mut decode_flag = false;
-
         let mut segments_to_decode = Vec::new();
-
+        let mut decode_flag = false;
         let mut chunksize = 0;
 
         let mut packets_to_parses = received_packets.lock().await;
@@ -100,10 +81,7 @@ async fn processing_packets(
             Some(bytes) => bytes.clone(),
             None => continue,
         };
-        // packets_to_parses.swap_remove(0);
         packets_to_parses.pop_front();
-        // println!("->> packets storage len: {}", packets_to_parses.len());
-        // drop(packets_to_parses);
 
         let packet: Packet = bincode::deserialize(&packet_bytes).unwrap();
         // Packet details
@@ -132,7 +110,6 @@ async fn processing_packets(
             file_details_storage_lock.push(file_details);
         }
         // Update file_details
-        // let mut file_details_storage_lock = file_details_storage.lock().await;
         let file_details = file_details_storage_lock
             .iter_mut()
             .find(|fd| fd.filename == filename.clone())
@@ -142,7 +119,6 @@ async fn processing_packets(
         num_segments_recv_per_chunk_vec[chunk_id] += 1;
 
         // Update segment_data_recv_per_chunk
-        // println!("->> Chunk ID: {}", chunk_id);
         let segment_data_recv_per_chunk_vec = &mut file_details.segment_data_recv_per_chunk;
         segment_data_recv_per_chunk_vec.push(SegmentData {
             chunk_id: chunk_id,
@@ -155,10 +131,6 @@ async fn processing_packets(
             .segments
             .insert(segment_id, packet.data);
 
-        // println!(
-        //     "num segment check: {}",
-        //     num_segments_recv_per_chunk_vec[chunk_id]
-        // );
         if num_segments_recv_per_chunk_vec[chunk_id]
             >= (number_of_segments_expected - NUMBER_OF_REPAIR_SYMBOLS)
         {
@@ -251,10 +223,7 @@ async fn processing_packets(
             });
         }
     }
-
-    // let pointer_file_details_storage = Arc::clone(&file_details_storage);
 }
-// }
 
 async fn merge_temp_files(filename: String, number_of_chunks: usize) -> bool {
     let temp_final_file_path = format!("./receiving_dir/{}", filename);
@@ -302,16 +271,12 @@ async fn merge_temp_files(filename: String, number_of_chunks: usize) -> bool {
 }
 
 fn decode_chunks(
-    // segment_names: Vec<String>,
     segments: Vec<Vec<u8>>,
-    // segments: Vec<ChunkSegmentData>,
     chunksize: usize,
     max_source_symbol_size: usize,
 ) -> (bool, Option<Vec<u8>>) {
     let mut decoder = raptor_code::SourceBlockDecoder::new(max_source_symbol_size);
     // Loop through each segment and push to decoder
-    // for (i, segment) in segments.iter().enumerate() {
-    // println!("->> number of segments: {}", segments.len());
     for i in 0..segments.len() {
         if segments[i].len() != 1 {
             decoder.push_encoding_symbol(&segments[i], i as u32);
@@ -337,10 +302,13 @@ async fn recv_packets(
     udp_service: &UdpSocket,
     received_packets: Arc<Mutex<Box<VecDeque<Vec<u8>>>>>,
 ) -> Result<()> {
+    let MTU = env::var("MTU")
+        .expect("MTU env var not set")
+        .parse::<usize>()?;
     loop {
         let mut packets_storage = received_packets.lock().await;
         // -- Receive packets and store them first
-        let mut buffer = vec![0; 9000];
+        let mut buffer = vec![0; MTU];
         if packets_storage.len() > 0 {
             udp_service.set_nonblocking(true)?;
             match udp_service.recv_from(&mut buffer) {

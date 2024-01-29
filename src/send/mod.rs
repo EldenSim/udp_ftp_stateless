@@ -6,6 +6,8 @@ use std::path::PathBuf;
 use std::time::Duration;
 use std::{env, fs, thread};
 
+use rand::seq::SliceRandom;
+use rand::thread_rng;
 use udp_ftp_stateless::Result;
 use udp_ftp_stateless::{EncoderConfig, Packet, Preamble};
 
@@ -85,6 +87,8 @@ fn send_file_with_raptor(
     let total_number_of_chunks = chunks.len();
     println!("->> Number of chunks: {}", total_number_of_chunks);
     let mut total_num_of_symbols = 0;
+    // let mut buffer = Vec::new();
+
     for (chunk_id, chunk) in chunks.iter().enumerate() {
         let chunksize = chunk.len();
         let mut encoder =
@@ -116,16 +120,20 @@ fn send_file_with_raptor(
 
             // -- Serialise Struct to send in bytes
             let packet_bytes = bincode::serialize(&packet)?;
+            // println!("Serialised len: {}", packet_bytes.len());
             // -- Send Packet
             udp_service.send(&packet_bytes).expect("Send packet error");
+            // buffer.push(packet_bytes);
         }
-
+        // break;
         thread::sleep(Duration::from_millis(DELAY_PER_CHUNK))
     }
-    // -- Can try changing to send empty only at the end of all files
-    // -- Now is sending after every file
-    let number_of_padding_packets =
-        PROCESSING_STORAGE - (total_number_of_chunks * total_num_of_symbols) % PROCESSING_STORAGE;
+    // buffer.shuffle(&mut thread_rng());
+    // for packet in &buffer {
+    //     udp_service.send(packet).expect("Send packet error");
+    // }
+    // let number_of_padding_packets =
+    //     PROCESSING_STORAGE - (total_number_of_chunks * total_num_of_symbols) % PROCESSING_STORAGE;
     let empty_preamble = Preamble {
         filename: "".to_string(),
         filesize: 0,
@@ -143,7 +151,8 @@ fn send_file_with_raptor(
         post_padding: 0,
     };
     let empty_packet_bytes = bincode::serialize(&empty_packet)?;
-    for _ in 0..number_of_padding_packets + 1 {
+    // // for _ in 0..number_of_padding_packets + 1 {
+    for _ in 0..100 {
         udp_service
             .send(&empty_packet_bytes)
             .expect("Send empty packet error");
@@ -157,12 +166,11 @@ fn send_file_with_raptor(
 /// and packet size is ultimately limited by MTU.
 fn calculate_chunksize_and_data_size(max_source_symbol_size: usize) -> Result<usize> {
     // -- MTU limit will determine the size of packet
-    let mtu_limit = env::var("MTU")
+    let MTU = env::var("MTU")
         .expect("MTU env var not set")
         .parse::<usize>()?;
-
-    // -- Max data size is calculate by deducting preamble (72 bytes), IP/ UDP Headers (28 bytes) and buffer (10 bytes).
-    // let max_data_size = mtu_limit - 72 - 28 - 10;
+    // -- Max data size is calculate by deducting preamble + 3 bytes (75 bytes), IP/ UDP Headers (28 bytes) and buffer (10 bytes).
+    let mtu_limit = MTU - 75 - 28 - 10;
     let MAX_CHUNKSIZE = env::var("MAX_CHUNKSIZE")
         .expect("MAX_CHUNKSIZE env var not set")
         .parse::<usize>()?;

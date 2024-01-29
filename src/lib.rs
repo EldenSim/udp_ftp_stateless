@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 Packet structure:
     Preamble (Limit to 72 bytes):
         - 0xAA | filename | filesize | chunk_id | chunksize | number_of_chunks_expected | segment_id | number of segments_expected |
-    Data (Limit to MTU - IP/UDP header (28 bytes) - Preamble) -- target (9000 - 30 - 72 = 8898 ~ 8500):
+    Data (Limit to MTU - IP/UDP header (28 bytes) - Preamble) -- target 1500 MTU limit, 1500 - 75 = 1425:
         - 0xAA | data | 0xAA
 */
 
@@ -37,7 +37,7 @@ pub struct Preamble {
     // -- 8 bytes
 }
 
-// -- Template for Packet (Maximum 9000)
+// -- Template for Packet (Total 75 bytes + data bytes)
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Packet {
     pub pre_padding: u8,
