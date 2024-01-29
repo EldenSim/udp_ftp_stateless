@@ -11,7 +11,8 @@ use std::{env, sync::Arc};
 
 // use async_std::fs;
 use async_std::fs::OpenOptions;
-use async_std::io;
+use async_std::io::prelude::SeekExt;
+use async_std::io::{self, ReadExt, WriteExt};
 use async_std::path::Path;
 use async_std::sync::Mutex;
 // use std::sync::Mutex as stdMutex;
@@ -101,7 +102,7 @@ async fn processing_packets(
         };
         // packets_to_parses.swap_remove(0);
         packets_to_parses.pop_front();
-        println!("->> packets storage len: {}", packets_to_parses.len());
+        // println!("->> packets storage len: {}", packets_to_parses.len());
         // drop(packets_to_parses);
 
         let packet: Packet = bincode::deserialize(&packet_bytes).unwrap();
@@ -232,10 +233,19 @@ async fn processing_packets(
                     && file_details.file_merging_status == false
                 {
                     file_details.file_merging_status = true;
-                    // let pointer_3_file_details_storage = Arc::clone(&file_details_storage);
                     let num_of_chunks = file_details.chunk_decoding_status.len();
+                    let pointer_3_file_details_storage = Arc::clone(&pointer_file_details_storage);
                     task::spawn(async move {
-                        merge_temp_files(filename_2, num_of_chunks).await;
+                        let merge_completed =
+                            merge_temp_files(filename_2.clone(), num_of_chunks).await;
+                        if merge_completed {
+                            let mut pointer_3_file_details_storage_lock: async_std::sync::MutexGuard<'_, Box<Vec<_>>> = pointer_3_file_details_storage.lock().await;
+                            let file_detail_index = pointer_3_file_details_storage_lock
+                                .iter()
+                                .position(|fd| fd.filename == filename_2)
+                                .unwrap();
+                            pointer_3_file_details_storage_lock.remove(file_detail_index);
+                        }
                     });
                 }
             });
@@ -246,25 +256,49 @@ async fn processing_packets(
 }
 // }
 
-async fn merge_temp_files(filename: String, number_of_chunks: usize) {
+async fn merge_temp_files(filename: String, number_of_chunks: usize) -> bool {
     let temp_final_file_path = format!("./receiving_dir/{}", filename);
+    let mut completed = false;
+    let mut last_file = 0;
+    let mut file_1 = OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(&temp_final_file_path)
+        .await
+        .unwrap();
+    // TODO: Implement continuation of final file write
+    // if Path::new(&temp_final_file_path).exists().await {
+    //     todo!()
+    // }
     for i in 0..number_of_chunks {
         let file_2_path = format!("./temp/{}_{}.txt", filename, i);
-        let mut file_1 = OpenOptions::new()
-            .append(true)
-            .create(true)
-            .open(&temp_final_file_path)
-            .await
-            .unwrap();
+
         let mut file_2 = match OpenOptions::new().read(true).open(&file_2_path).await {
             Ok(file) => file,
-            Err(_) => return,
+            Err(_) => {
+                last_file = i;
+                completed = false;
+                break;
+            }
         };
 
         io::copy(&mut file_2, &mut file_1).await.unwrap();
         // Remove all temp files used to clean up
         let _ = fs::remove_file(&file_2_path);
+        completed = true;
     }
+    // If chunks are missing write the final file up till missing chunk
+    // and append missing chunk number at last line of file
+    if !completed {
+        file_1.seek(io::SeekFrom::End(0));
+        file_1.write("\n".as_bytes()).await.unwrap();
+        file_1
+            .write(last_file.to_string().as_bytes())
+            .await
+            .unwrap();
+        return false;
+    }
+    true
 }
 
 fn decode_chunks(
@@ -306,7 +340,7 @@ async fn recv_packets(
     loop {
         let mut packets_storage = received_packets.lock().await;
         // -- Receive packets and store them first
-        let mut buffer = vec![0; 1522];
+        let mut buffer = vec![0; 9000];
         if packets_storage.len() > 0 {
             udp_service.set_nonblocking(true)?;
             match udp_service.recv_from(&mut buffer) {
