@@ -12,7 +12,7 @@ use serde::de;
 use serde::de::Visitor;
 use serde::{Deserialize, Deserializer, Serialize};
 
-// use udp_ftp_stateless::Result;
+use udp_ftp_stateless::PacketQ;
 
 // -- Encoding Configuration Variables
 pub struct EncoderConfigRQ {
@@ -21,14 +21,6 @@ pub struct EncoderConfigRQ {
 }
 
 // Following section details the packet structure of RaptorQ implementation
-#[derive(Deserialize, Serialize)]
-pub struct PacketQ {
-    pub filename: String,
-    pub filesize: u64,
-    pub chunk_id: u64,
-    pub encoder_config: [u8; 12],
-    pub data: Vec<u8>,
-}
 
 pub fn raptorQ_main(udp_service: &UdpSocket) -> Result<(), Box<dyn Error>> {
     let encoder_config = init_raptorQ()?;

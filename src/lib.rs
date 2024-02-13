@@ -47,3 +47,12 @@ pub struct Packet {
     pub data: Vec<u8>,
     pub post_padding: u8,
 }
+
+#[derive(Deserialize, Serialize)]
+pub struct PacketQ {
+    pub filename: String,
+    pub filesize: u64,
+    pub chunk_id: u64,
+    pub encoder_config: [u8; 12],
+    pub data: Vec<u8>,
+}
