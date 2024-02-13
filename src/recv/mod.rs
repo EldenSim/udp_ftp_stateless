@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 use std::net::UdpSocket;
-use std::{env, fs};
+use std::{env, fs, str};
 
 use async_std::sync::{Arc, Mutex};
 use async_std::task;
@@ -72,7 +72,7 @@ async fn processing_packets(
                 number_of_chunks_expected,
                 file_decoding_status: false,
                 file_merging_status: false,
-                data: vec![Vec::new(); number_of_chunks_expected as usize],
+                data: Vec::new(),
                 encoder_config,
             })
         }
@@ -81,24 +81,29 @@ async fn processing_packets(
             .iter_mut()
             .find(|fdQ| fdQ.filename == filename)
             .unwrap();
+
         file_details.data.push(packet.data);
 
         let received_chunks = file_details.data.len();
+        println!("recv chunks: {}", received_chunks);
+
         if received_chunks >= (number_of_chunks_expected - NUMBER_OF_REPAIR_SYMBOLS) as usize
             && !file_details.file_decoding_status
         {
+            println!("Decoding file: {}", filename);
+            file_details.file_decoding_status = true;
             // Try to decode file
             let file_data = file_details.data.clone();
             let encoder_config = file_details.encoder_config;
-            task::spawn(async move {
-                let (completed, reconstructed_data) =
-                    decode_packets(file_data, encoder_config).await;
-                if completed {
-                    let data = reconstructed_data.unwrap();
-                    let file_path = format!("./receiving_dir/{}", filename);
-                    fs::write(file_path, data).unwrap();
-                }
-            });
+            let (completed, reconstructed_data) = decode_packets(file_data, encoder_config).await;
+            if completed {
+                let data = reconstructed_data.unwrap();
+                let file_path = format!("./receiving_dir/{}", filename);
+                fs::write(file_path, data).unwrap();
+            }
+            // task::spawn(async move {
+
+            // });
         }
     }
 }
@@ -107,12 +112,15 @@ async fn decode_packets(
     mut file_data: Vec<Vec<u8>>,
     encoder_config: [u8; 12],
 ) -> (bool, Option<Vec<u8>>) {
+    println!("Length of packets: {:?}", &file_data.len());
     let mut decoder = Decoder::new(ObjectTransmissionInformation::deserialize(&encoder_config));
 
     // Perform the decoding
     let mut result = None;
     while !file_data.is_empty() {
-        result = decoder.decode(EncodingPacket::deserialize(&file_data.pop().unwrap()));
+        let packet = file_data.pop().unwrap();
+        let encoded_packet = EncodingPacket::deserialize(&packet);
+        result = decoder.decode(encoded_packet);
         if result.is_some() {
             return (true, result);
         }
