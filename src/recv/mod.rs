@@ -49,6 +49,7 @@ async fn processing_packets(
     file_details_storage: Arc<Mutex<Box<Vec<FileDetailsQ>>>>,
     NUMBER_OF_REPAIR_SYMBOLS: u64,
 ) {
+    let mut files_to_ignore: Vec<String> = Vec::new();
     loop {
         let mut packets_to_parses = received_packets.lock().await;
         let packet_bytes = match packets_to_parses.front() {
@@ -58,6 +59,9 @@ async fn processing_packets(
         packets_to_parses.pop_front();
         let packet: PacketQ = bincode::deserialize(&packet_bytes).unwrap();
         let filename = packet.filename;
+        if files_to_ignore.contains(&filename) {
+            continue;
+        }
         let number_of_chunks_expected = packet.number_of_chunks_expected;
         let encoder_config = packet.encoder_config;
         let mut file_details_storage_lock = file_details_storage.lock().await;
@@ -100,11 +104,24 @@ async fn processing_packets(
                 let data = reconstructed_data.unwrap();
                 let file_path = format!("./receiving_dir/{}", filename);
                 fs::write(file_path, data).unwrap();
+                file_details.file_merging_status = true;
+                let file_detail_index = file_details_storage_lock
+                    .iter()
+                    .position(|fdQ| fdQ.filename == filename)
+                    .unwrap();
+                file_details_storage_lock.remove(file_detail_index);
+                files_to_ignore.push(filename);
             }
-            // task::spawn(async move {
-
-            // });
         }
+        // let pointer_2_file_details_storage = Arc::clone(&file_details_storage);
+        // let mut file_details_storage_lock_2 = file_details_storage.lock().await;
+        // let file_detail_index = file_details_storage_lock_2
+        //     .iter()
+        //     .position(|fdQ| fdQ.filename == filename)
+        //     .unwrap();
+        // if file_details_storage_lock_2[file_detail_index].file_merging_status {
+        //     file_details_storage_lock_2.remove(file_detail_index);
+        // }
     }
 }
 
@@ -138,7 +155,7 @@ async fn recv_packets(
     loop {
         let mut packets_storage = received_packets.lock().await;
         // -- Receive packets and store them first
-        let mut buffer = vec![0; MTU + 20];
+        let mut buffer = vec![0; 1500];
         if packets_storage.len() > 0 {
             udp_service.set_nonblocking(true)?;
             match udp_service.recv_from(&mut buffer) {
