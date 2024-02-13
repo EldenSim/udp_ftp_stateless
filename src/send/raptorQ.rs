@@ -77,12 +77,13 @@ fn send_file_with_raptorQ(
         .iter()
         .map(|packet| packet.serialize())
         .collect();
-
+    let number_of_chunks_expected = packets.len();
     for (i, packet_data) in packets.iter().enumerate() {
         let packet = PacketQ {
             filename: filename.clone(),
             filesize: filesize as u64,
             chunk_id: i as u64,
+            number_of_chunks_expected: number_of_chunks_expected as u64,
             encoder_config: init_encoder_config.clone().serialize(),
             data: packet_data.to_vec(),
         };

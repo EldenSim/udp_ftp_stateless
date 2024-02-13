@@ -53,6 +53,7 @@ pub struct PacketQ {
     pub filename: String,
     pub filesize: u64,
     pub chunk_id: u64,
+    pub number_of_chunks_expected: u64,
     pub encoder_config: [u8; 12],
     pub data: Vec<u8>,
 }
