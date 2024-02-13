@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 // endregion: --- Modules
 
+// Following section details the packet structure for Raptor code implementation
 /*
 Packet structure:
     Preamble (Limit to 72 bytes):
@@ -45,10 +46,4 @@ pub struct Packet {
     pub mid_padding: u8,
     pub data: Vec<u8>,
     pub post_padding: u8,
-}
-
-// -- Encoding Configuration Variables
-pub struct EncoderConfig {
-    pub max_source_symbol_size: usize,
-    pub number_of_repair_symbols: usize,
 }
