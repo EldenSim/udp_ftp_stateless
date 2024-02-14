@@ -1,5 +1,4 @@
-// region:    --- Optimise Struct test
-
+// region:    --- raptor structs
 #[derive(Debug)]
 pub struct FileDetails {
     pub filename: String,
@@ -40,3 +39,17 @@ pub struct MergingStatus {
 }
 
 // endregion: --- Optimise Struct test
+
+// region:    --- raptorQ structs
+
+#[derive(Debug)]
+pub struct FileDetailsQ {
+    pub filename: String,
+    pub number_of_chunks_expected: u64,
+    pub file_decoding_status: bool,
+    pub file_merging_status: bool,
+    pub data: Vec<Vec<u8>>,
+    pub encoder_config: [u8; 12],
+}
+
+// endregion: --- raptorQ structs
