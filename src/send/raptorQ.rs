@@ -55,9 +55,10 @@ fn init_raptorQ() -> Result<EncoderConfigRQ, Box<dyn Error>> {
     let NUMBER_OF_REPAIR_SYMBOLS = env::var("NUMBER_OF_REPAIR_SYMBOLS")
         .expect("NUMBER_OF_REPAIR_SYMBOLS env var not set")
         .parse::<u32>()?;
-    let MTU = env::var("NUMBER_OF_REPAIR_SYMBOLS")
-        .expect("NUMBER_OF_REPAIR_SYMBOLS env var not set")
+    let MTU = env::var("MTU")
+        .expect("MTU env var not set")
         .parse::<u16>()?;
+    println!("MTU: {}", MTU);
     let encoder_config = EncoderConfigRQ {
         number_of_repair_symbols: NUMBER_OF_REPAIR_SYMBOLS,
         mtu: MTU,
@@ -85,7 +86,7 @@ fn send_file_with_raptorQ(
         .iter()
         .map(|packet| packet.serialize())
         .collect();
-
+    let number_of_chunks_expected = packets.len();
     for (i, packet_data) in packets.iter().enumerate() {
         let packet = PacketQ {
             filename: filename.clone(),
@@ -96,6 +97,7 @@ fn send_file_with_raptorQ(
         };
         let packet_bytes = bincode::serialize(&packet)?;
         udp_service.send(&packet_bytes).expect("Send packet error");
+        thread::sleep(Duration::from_nanos(1))
     }
     Ok(())
 }
