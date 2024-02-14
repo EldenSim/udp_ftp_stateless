@@ -155,6 +155,7 @@ async fn recv_packets(
     loop {
         let mut packets_storage = received_packets.lock().await;
         // -- Receive packets and store them first
+        // Buffer depends on MTU limit set
         let mut buffer = vec![0; 1500];
         if packets_storage.len() > 0 {
             udp_service.set_nonblocking(true)?;
