@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 use std::net::UdpSocket;
-use std::{env, fs, str};
+use std::{env, fs, str, thread};
 
 use async_std::sync::{Arc, Mutex};
 use async_std::task;
@@ -27,20 +27,21 @@ pub async fn main(udp_service: UdpSocket) -> Result<()> {
         Arc::new(Mutex::new(Box::new(Vec::new())));
 
     let pointer_2_received_packets = Arc::clone(&received_packets);
+    let pointer_2_file_details_storage = Arc::clone(&file_details_storage);
 
     task::Builder::new()
         .name("Processing Task".to_string())
         .spawn(async move {
             processing_packets(
                 pointer_2_received_packets,
-                file_details_storage,
+                pointer_2_file_details_storage,
                 NUMBER_OF_REPAIR_SYMBOLS,
             )
             .await
         })?;
 
     recv_packets(&udp_service, received_packets).await.unwrap();
-    todo!();
+
     Ok(())
 }
 
@@ -49,6 +50,7 @@ async fn processing_packets(
     file_details_storage: Arc<Mutex<Box<Vec<FileDetailsQ>>>>,
     NUMBER_OF_REPAIR_SYMBOLS: u64,
 ) {
+    // let mut files_to_ignore: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let mut files_to_ignore: Vec<String> = Vec::new();
     loop {
         let mut packets_to_parses = received_packets.lock().await;
@@ -59,6 +61,7 @@ async fn processing_packets(
         packets_to_parses.pop_front();
         let packet: PacketQ = bincode::deserialize(&packet_bytes).unwrap();
         let filename = packet.filename;
+        // let files_to_ignore_lock = files_to_ignore.lock().await;
         if files_to_ignore.contains(&filename) {
             continue;
         }
@@ -89,11 +92,15 @@ async fn processing_packets(
         file_details.data.push(packet.data);
 
         let received_chunks = file_details.data.len();
-        println!("recv chunks: {}", received_chunks);
+        // println!("recv chunks: {}", received_chunks);
 
         if received_chunks >= (number_of_chunks_expected - NUMBER_OF_REPAIR_SYMBOLS) as usize
             && !file_details.file_decoding_status
         {
+            // let pointer_2_file_details_storage = Arc::clone(&file_details_storage);
+            // let pointer_2_files_to_ignore = Arc::clone(&files_to_ignore);
+            // let filename_2 = filename.clone();
+
             println!("Decoding file: {}", filename);
             file_details.file_decoding_status = true;
             // Try to decode file
@@ -103,7 +110,9 @@ async fn processing_packets(
             if completed {
                 let data = reconstructed_data.unwrap();
                 let file_path = format!("./receiving_dir/{}", filename);
-                fs::write(file_path, data).unwrap();
+                thread::spawn(move || {
+                    fs::write(file_path, data).unwrap();
+                });
                 file_details.file_merging_status = true;
                 let file_detail_index = file_details_storage_lock
                     .iter()
@@ -152,29 +161,50 @@ async fn recv_packets(
     let MTU = env::var("MTU")
         .expect("MTU env var not set")
         .parse::<usize>()?;
+    // let mut no_hit_count = 0;
+    udp_service.set_nonblocking(true)?;
     loop {
         let mut packets_storage = received_packets.lock().await;
         // -- Receive packets and store them first
         // Buffer depends on MTU limit set
         let mut buffer = vec![0; 1500];
-        if packets_storage.len() > 0 {
-            udp_service.set_nonblocking(true)?;
-            match udp_service.recv_from(&mut buffer) {
-                Ok((bytes, _)) => {
-                    let recv_data = &buffer[..bytes];
-                    packets_storage.push_back(recv_data.to_vec());
-                }
-                Err(_) => continue,
+        match udp_service.recv_from(&mut buffer) {
+            Ok((bytes, _)) => {
+                let recv_data = &buffer[..bytes];
+                packets_storage.push_back(recv_data.to_vec());
             }
-        } else {
-            udp_service.set_nonblocking(false)?;
-            match udp_service.recv_from(&mut buffer) {
-                Ok((bytes, _)) => {
-                    let recv_data = &buffer[..bytes];
-                    packets_storage.push_back(recv_data.to_vec());
-                }
-                Err(e) => return Err(e.into()),
+            Err(_) => {
+                continue;
+                // println!("no hit count: {}", no_hit_count);
+                // if no_hit_count > 50 {
+                //     udp_service.set_nonblocking(false)?;
+                //     no_hit_count = 0;
+                // } else {
+                //     no_hit_count += 1;
+                //     udp_service.set_nonblocking(true)?;
+                //     continue;
+                // }
             }
         }
+        // if packets_storage.len() > 0 {
+        //     udp_service.set_nonblocking(true)?;
+        //     match udp_service.recv_from(&mut buffer) {
+        //         Ok((bytes, _)) => {
+        //             let recv_data = &buffer[..bytes];
+        //             packets_storage.push_back(recv_data.to_vec());
+        //         }
+        //         Err(_) => continue,
+        //     }
+        // } else {
+        //     udp_service.set_nonblocking(false)?;
+        //     println!("Processing storage: {}", packets_storage.len());
+        //     match udp_service.recv_from(&mut buffer) {
+        //         Ok((bytes, _)) => {
+        //             let recv_data = &buffer[..bytes];
+        //             packets_storage.push_back(recv_data.to_vec());
+        //         }
+        //         Err(e) => return Err(e.into()),
+        //     }
+        // }
     }
 }
