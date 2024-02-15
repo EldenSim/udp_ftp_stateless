@@ -79,6 +79,7 @@ fn send_file_with_raptorQ(
         .map(|packet| packet.serialize())
         .collect();
     let number_of_chunks_expected = packets.len();
+    println!("Num of chunks: {}", number_of_chunks_expected);
     for (i, packet_data) in packets.iter().enumerate() {
         let packet = PacketQ {
             filename: filename.clone(),
@@ -90,7 +91,7 @@ fn send_file_with_raptorQ(
         };
         let packet_bytes = bincode::serialize(&packet)?;
         udp_service.send(&packet_bytes).expect("Send packet error");
-        thread::sleep(Duration::from_nanos(1))
+        thread::sleep(Duration::from_nanos(2))
     }
     Ok(())
 }
