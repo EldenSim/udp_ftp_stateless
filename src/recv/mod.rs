@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 use std::net::UdpSocket;
-use std::{env, fs, str, thread};
+use std::time::Duration;
+use std::{env, fs, str, thread, time};
 
 use async_std::sync::{Arc, Mutex};
 use async_std::task;
@@ -162,7 +163,8 @@ async fn recv_packets(
         .expect("MTU env var not set")
         .parse::<usize>()?;
     // let mut no_hit_count = 0;
-    udp_service.set_nonblocking(true)?;
+    let mut start = time::SystemTime::now();
+    // udp_service.set_nonblocking(true)?;
     loop {
         let mut packets_storage = received_packets.lock().await;
         // -- Receive packets and store them first
@@ -175,6 +177,14 @@ async fn recv_packets(
             }
             Err(_) => {
                 continue;
+                // if start.elapsed()? > Duration::from_secs(5) {
+                //     println!("Setting to blocking");
+                //     udp_service.set_nonblocking(false)?;
+                //     start = time::SystemTime::now();
+                //     continue;
+                // } else {
+                //     continue;
+                // }
                 // println!("no hit count: {}", no_hit_count);
                 // if no_hit_count > 50 {
                 //     udp_service.set_nonblocking(false)?;
