@@ -127,6 +127,7 @@ async fn processing_packets(
                     .position(|fdQ| fdQ.filename == filename)
                     .unwrap();
                 file_details_storage_lock.remove(file_detail_index);
+                file_details_storage_lock.shrink_to_fit();
                 files_to_ignore.push(filename);
             }
         }
