@@ -1,7 +1,9 @@
 use std::collections::VecDeque;
+
+use std::fs;
 use std::net::UdpSocket;
 use std::time::Duration;
-use std::{env, fs, str, thread, time};
+use std::{env, str, thread, time};
 
 use async_std::sync::{Arc, Mutex};
 use async_std::task;
@@ -41,6 +43,11 @@ pub async fn main(udp_service: UdpSocket) -> Result<()> {
             .await
         })?;
 
+    // task::Builder::new()
+    //     .name("Receiving Task".to_string())
+    //     .blocking(async move {
+    //         recv_packets(&udp_service, received_packets).await.unwrap();
+    //     });
     recv_packets(&udp_service, received_packets).await.unwrap();
 
     Ok(())
@@ -169,7 +176,7 @@ async fn recv_packets(
         let mut packets_storage = received_packets.lock().await;
         // -- Receive packets and store them first
         // Buffer depends on MTU limit set
-        let mut buffer = vec![0; 1500];
+        let mut buffer = vec![0; MTU + 100];
         match udp_service.recv_from(&mut buffer) {
             Ok((bytes, _)) => {
                 let recv_data = &buffer[..bytes];

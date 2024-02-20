@@ -3,6 +3,7 @@ use std::error::Error;
 use std::fmt;
 use std::fs;
 use std::net::UdpSocket;
+use std::os::unix::fs::MetadataExt;
 use std::path::PathBuf;
 use std::thread;
 use std::time::Duration;
@@ -30,9 +31,20 @@ pub fn raptorQ_main(udp_service: &UdpSocket) -> Result<(), Box<dyn Error>> {
     let DELAY_PER_FILE = env::var("DELAY_PER_FILE")
         .expect("DELAY_PER_FILE env var not set")
         .parse::<u64>()?;
-    for entry in fs::read_dir(SENDING_DIRECTORY)? {
+    let mut entries = Vec::new();
+    for entry in fs::read_dir(&SENDING_DIRECTORY)? {
         let entry = entry?;
         let path = entry.path();
+        let filesize = fs::metadata(&path)?.size();
+        entries.push((path, filesize));
+    }
+
+    entries.sort_by(|a, b| a.1.cmp(&b.1));
+
+    for entry in entries {
+        // let entry = entry?;
+        // let path = entry.path();
+        let (path, _) = entry;
         if path.is_dir() {
             unimplemented!()
         } else {
