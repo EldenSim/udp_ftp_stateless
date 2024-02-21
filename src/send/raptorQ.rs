@@ -8,6 +8,8 @@ use std::path::PathBuf;
 use std::thread;
 use std::time::Duration;
 
+use rand::seq::SliceRandom;
+use rand::thread_rng;
 use raptorq::{Encoder, ObjectTransmissionInformation};
 use serde::de;
 use serde::de::Visitor;
@@ -84,13 +86,16 @@ fn send_file_with_raptorQ(
     let encoder = Encoder::with_defaults(&file, encoder_config.mtu);
     let init_encoder_config: raptorq::ObjectTransmissionInformation = encoder.get_config();
     // Perform the encoding, and serialize to Vec<u8> for transmission
-    let packets: Vec<Vec<u8>> = encoder
+    let mut packets: Vec<Vec<u8>> = encoder
         .get_encoded_packets(encoder_config.number_of_repair_symbols)
         .iter()
         .map(|packet| packet.serialize())
         .collect();
     let number_of_chunks_expected = packets.len();
     println!("Num of chunks: {}", number_of_chunks_expected);
+    let mut rng = thread_rng();
+    packets.shuffle(&mut rng);
+
     for (i, packet_data) in packets.iter().enumerate() {
         let packet = PacketQ {
             filename: filename.clone(),
