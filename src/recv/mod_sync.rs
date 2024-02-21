@@ -2,10 +2,10 @@ use std::collections::VecDeque;
 
 use std::fs;
 use std::net::UdpSocket;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use std::{env, str, thread, time};
-
-use async_std::sync::{Arc, Mutex};
+// use async_std::sync::{Arc, Mutex};
 use async_std::task;
 use raptorq::{Decoder, EncodingPacket, ObjectTransmissionInformation};
 
@@ -40,7 +40,6 @@ pub async fn main(udp_service: UdpSocket) -> Result<()> {
                 pointer_2_file_details_storage,
                 NUMBER_OF_REPAIR_SYMBOLS,
             )
-            .await
         })?;
 
     // task::Builder::new()
@@ -53,7 +52,7 @@ pub async fn main(udp_service: UdpSocket) -> Result<()> {
     Ok(())
 }
 
-async fn processing_packets(
+fn processing_packets(
     received_packets: Arc<Mutex<Box<VecDeque<Vec<u8>>>>>,
     file_details_storage: Arc<Mutex<Box<Vec<FileDetailsQ>>>>,
     NUMBER_OF_REPAIR_SYMBOLS: u64,
@@ -61,7 +60,7 @@ async fn processing_packets(
     // let mut files_to_ignore: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let mut files_to_ignore: Vec<String> = Vec::new();
     loop {
-        let mut packets_to_parses = received_packets.lock().await;
+        let mut packets_to_parses = received_packets.lock().unwrap();
         let packet_bytes = match packets_to_parses.front() {
             Some(bytes) => bytes.clone(),
             None => continue,
@@ -75,7 +74,7 @@ async fn processing_packets(
         }
         let number_of_chunks_expected = packet.number_of_chunks_expected;
         let encoder_config = packet.encoder_config;
-        let mut file_details_storage_lock = file_details_storage.lock().await;
+        let mut file_details_storage_lock = file_details_storage.lock().unwrap();
         // Check if instance of file details have already been created
         if file_details_storage_lock
             .iter()
@@ -114,7 +113,6 @@ async fn processing_packets(
             // Try to decode file
             let file_data = file_details.data.clone();
             let encoder_config = file_details.encoder_config;
-
             let (completed, reconstructed_data) = decode_packets(file_data, encoder_config).await;
             if completed {
                 let data = reconstructed_data.unwrap();
@@ -128,7 +126,6 @@ async fn processing_packets(
                     .position(|fdQ| fdQ.filename == filename)
                     .unwrap();
                 file_details_storage_lock.remove(file_detail_index);
-                file_details_storage_lock.shrink_to_fit();
                 files_to_ignore.push(filename);
             }
         }
@@ -152,20 +149,16 @@ async fn decode_packets(
     let mut decoder = Decoder::new(ObjectTransmissionInformation::deserialize(&encoder_config));
 
     // Perform the decoding
-    let handle = thread::spawn(move || {
-        let mut result = None;
-        while !file_data.is_empty() {
-            let packet = file_data.pop().unwrap();
-            let encoded_packet = EncodingPacket::deserialize(&packet);
-            result = decoder.decode(encoded_packet);
-            if result.is_some() {
-                return (true, result);
-            }
+    let mut result = None;
+    while !file_data.is_empty() {
+        let packet = file_data.pop().unwrap();
+        let encoded_packet = EncodingPacket::deserialize(&packet);
+        result = decoder.decode(encoded_packet);
+        if result.is_some() {
+            return (true, result);
         }
-        return (false, None);
-    });
-    let result = handle.join();
-    result.unwrap()
+    }
+    return (false, None);
 }
 
 async fn recv_packets(
